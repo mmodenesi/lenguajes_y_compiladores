@@ -137,27 +137,9 @@ ADD = Abstraction(
 # give me a number n = λg.λx.gⁿ(x)
 # and a number     m = λh.λx.hᵐ(x)
 # and I will return λf.λx.f⁽ⁿᵐ⁾(x)
-# MUL = λn.λm.(λf.λx (n (mf)) x)
+# MUL = λn.λm.λf.λx.(n(mf))x
+# MUL = λn.λm.λf.n(mf)
 MUL = Abstraction(
-        Var('n'),
-        Abstraction(
-            Var('m'),
-            Abstraction(
-                Var('f'),
-                Abstraction(
-                    Var('x'),
-                    Application(
-                        Application(
-                            Var('n'),
-                            Application(
-                                Var('m'),
-                                Var('f'))),
-                        Var('x'))))))
-
-
-# brain eplodes:
-# MUL2 = λn.λm.(λf (n (mf)))
-MUL2 = Abstraction(
         Var('n'),
         Abstraction(
             Var('m'),
