@@ -177,45 +177,36 @@ def lambda_reduce(expr, verbose=False):
         print(e)
 
 
-def normal_evaluation(expr, verbose=False, step_by_step=False):
+def normal_evaluation(expr, verbose=False):
     """Perform normal evaluation on expr."""
 
     if not expr.is_closed():
         raise ValueError('Only closed expresions may be evaluated')
 
-    def inner(expr, verbose, branch_identifier, step_by_step):
-        branch_identifier = branch_identifier or []
-        guard = '.'.join(branch_identifier)
-        if guard:
-            guard += '   '
+    def inner(expr, branch_id=None):
+        branch_id = branch_id or []
+
+        def maybe_print(msg):
+            if verbose:
+                print('{} {}'.format('.'.join(branch_id), msg))
 
         # abstracions are the cannonical form
         if type(expr) == Abstraction:
-            if verbose:
-                print('{}{} ⇒ {}'.format(guard , expr, expr))
-                if step_by_step:
-                    _ = input()
-            return expr
+            maybe_print('{} ⇒ {}'.format(expr, expr))
+            result = expr
+        else:
+            # expr is Application
+            maybe_print(expr)
 
-        # expr is Application
-        if verbose:
-            print('{}{}'.format(guard, expr))
-            if step_by_step:
-                _ = input()
+            e = inner(expr.operator, branch_id + ['a'])
+            z = e.reach.replace(Delta({e.bind: expr.operand}))
 
-        e = inner(expr.operator, verbose, branch_identifier + ['a'], step_by_step)
-        e_prime = expr.operand
-        z = e.reach.replace(Delta({e.bind: e_prime}))
-
-        result = inner(z, verbose, branch_identifier + ['b'], step_by_step)
-        if verbose:
-            print('{}⇒ {}'.format(guard, result))
-            if step_by_step:
-                _ = input()
+            result = inner(z, branch_id + ['b'])
+            maybe_print('⇒ {}'.format(result))
 
         return result
 
     try:
-        return inner(expr, verbose, None, step_by_step)
+        return inner(expr)
     except RecursionError as e:
         print(e)
