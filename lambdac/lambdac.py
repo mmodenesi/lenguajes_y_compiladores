@@ -210,3 +210,39 @@ def normal_evaluation(expr, verbose=False):
         return inner(expr)
     except RecursionError as e:
         print(e)
+
+
+def eager_evaluation(expr, verbose=False):
+    """Perform eager evaluation on expr."""
+
+    if not expr.is_closed():
+        raise ValueError('Only closed expresions may be evaluated')
+
+    def inner(expr, branch_id=None):
+        branch_id = branch_id or []
+
+        def maybe_print(msg):
+            if verbose:
+                print('{} {}'.format('.'.join(branch_id), msg))
+
+        # abstractions are the cannonical form
+        if type(expr) == Abstraction:
+            maybe_print('{} ⇒ {}'.format(expr, expr))
+            result = expr
+        else:
+            # expr is Application
+            maybe_print(expr)
+
+            e1 = inner(expr.operator, branch_id + ['a'])
+            z1 = inner(expr.operand, branch_id + ['b'])
+            z = e1.reach.replace(Delta({e1.bind: z1}))
+
+            result = inner(z, branch_id + ['c'])
+            maybe_print('⇒ {}'.format(result))
+
+        return result
+
+    try:
+        return inner(expr)
+    except RecursionError as e:
+        print(e)
