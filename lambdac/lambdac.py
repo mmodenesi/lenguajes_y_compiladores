@@ -190,7 +190,7 @@ def normal_evaluation(expr, verbose=False):
             if verbose:
                 print('{} {}'.format('.'.join(branch_id), msg))
 
-        # abstracions are the cannonical form
+        # abstractions are the cannonical form
         if type(expr) == Abstraction:
             maybe_print('{} ⇒ {}'.format(expr, expr))
             result = expr
