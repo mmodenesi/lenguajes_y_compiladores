@@ -5,9 +5,6 @@ from replace import Delta
 
 class LambdaExpr:
 
-    def __repr__(self):
-        return str(self)
-
     def is_redex(self):
         return False
 
@@ -28,6 +25,9 @@ class Var(LambdaExpr):
         else:
             self._name = name
             self._number = 0
+
+    def __repr__(self):
+        return "{}('{}')".format(self.__class__.__name__, self.name)
 
     def is_normal_form(self):
         return True
@@ -101,6 +101,11 @@ class Application(LambdaExpr):
 
         return template.format(self.operator, self.operand)
 
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__,
+                                   repr(self.operand),
+                                   repr(self.operator))
+
     def replace(self, delta):
         return Application(self.operator.replace(delta), self.operand.replace(delta))
 
@@ -117,6 +122,11 @@ class Abstraction(LambdaExpr):
 
     def __str__(self):
         return 'λ{}.{}'.format(self.bind, self.reach)
+
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__,
+                                   repr(self.bind),
+                                   repr(self.reach))
 
     def rename(self, newbind):
         if newbind in (self.reach.fv() - {self.bind}):
@@ -147,32 +157,52 @@ class Abstraction(LambdaExpr):
         return self.reach.is_normal_form()
 
 
+def get_path_to_outermost_leftmost_redex(expr, path=''):
+    if type(expr) == Var:
+        return None
+    if type(expr) == Abstraction:
+        return get_path_to_outermost_leftmost_redex(expr.reach, path + '.reach')
+    if expr.is_redex():
+        return path
+    left = get_path_to_outermost_leftmost_redex(expr.operator, path + '.operator')
+    right = get_path_to_outermost_leftmost_redex(expr.operand, path + '.operand')
+    if left is not None and right is not None:
+        if len(left.split('.')) >= len(right.split('.')):
+            return left
+        return right
+    elif left is not None:
+        return left
+    return right
+
+
 def lambda_reduce(expr, verbose=False):
     """Take expr to a normal form."""
 
-    def inner(expr, verbose):
-        if type(expr) == Var:
-            return expr
-        if type(expr) == Application:
-            operand = expr.operand
-            operator = expr.operator
-            if expr.is_redex():
-                delta = Delta({operator.bind: operand})
-                new_expr = operator.reach.replace(delta)
-                if verbose:
-                    print('{} → {}'.format(expr, new_expr))
-                return inner(new_expr, verbose)
+    def inner(expr):
+        if verbose:
+            print(expr)
+        while True:
+            path = get_path_to_outermost_leftmost_redex(expr)
+            if path is None:
+                break
+            redex = eval('expr{}'.format(path))
+            delta = Delta({redex.operator.bind: redex.operand})
+            beta_contraction = redex.operator.reach.replace(delta)
+            path = path.split('.')[1:]
+            elem = expr
+            while len(path) > 1:
+                attr = path.pop(0)
+                elem = getattr(elem, attr)
+            if path:
+                setattr(elem, path[0], beta_contraction)
             else:
-                result = Application(inner(operator, verbose), inner(operand, verbose))
-                if result.is_redex():
-                    return inner(result, verbose)
-                else:
-                    return result
-        if type(expr) == Abstraction:
-            return Abstraction(expr.bind, inner(expr.reach, verbose))
+                expr = beta_contraction
+            if verbose:
+                print('→', expr)
+        return expr
 
     try:
-        return inner(expr, verbose)
+        return inner(expr)
     except RecursionError as e:
         print(e)
 
