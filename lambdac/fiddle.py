@@ -15,7 +15,6 @@ FALSE = Abstraction(
         Var('y'),
         Var('y')))
 
-
 # NOT = λx.(x(λx.λy.y))(λx.λy.x)
 #     = λx.(x FALSE) TRUE
 NOT = Abstraction(
@@ -116,36 +115,114 @@ def ntol(n):
 
 
 def lton(expr):
-    expr = lambda_reduce(expr)
-    # assuming it is a number
-    return str(lambda_reduce(expr)).count(expr.bind.name) - 1
+    if expr:
+        expr = lambda_reduce(expr)
+        # assuming it is a number
+        return str(lambda_reduce(expr)).count(expr.bind.name) - 1
 
 
 # give me a number n = λg.λx.gⁿ(x)
 # and a number     m = λh.λx.hᵐ(x)
 # and I will return λf.λx.f⁽ⁿ⁺ᵐ⁾(x)
 ADD = Abstraction(
-        Var('n'),
-        Abstraction(
-            Var('m'),
+    Var('n'),
+    Abstraction(
+        Var('m'),
+        Application(
             Application(
-                Application(
-                    Var('m'),
-                    SUCC),
-                Var('n'))))
+                Var('m'),
+                SUCC),
+            Var('n'))))
 
 # give me a number n = λg.λx.gⁿ(x)
 # and a number     m = λh.λx.hᵐ(x)
 # and I will return λf.λx.f⁽ⁿᵐ⁾(x)
 # MUL = λn.λm.λf.λx.(n(mf))x
-# MUL = λn.λm.λf.n(mf)
+
 MUL = Abstraction(
-        Var('n'),
+    Var('n'),
+    Abstraction(
+        Var('m'),
         Abstraction(
-            Var('m'),
+            Var('f'),
             Abstraction(
-                Var('f'),
+                Var('x'),
                 Application(
-                    Var('n'),
                     Application(
-                        Var('m'), Var('f'))))))
+                        Var('n'),
+                        Application(
+                            Var('m'),
+                            Var('f'))),
+                    Var('x'))))))
+
+# https://en.wikipedia.org/wiki/Lambda_calculus
+PRED = Abstraction(
+    Var('n'),
+    Abstraction(
+        Var('f'),
+        Abstraction(
+            Var('x'),
+            Application(
+                Application(
+                    Application(
+                        Var('n'),
+                        Abstraction(
+                            Var('g'),
+                            Abstraction(
+                                Var('h'),
+                                Application(
+                                    Var('h'),
+                                    Application(Var('g'), Var('f')))))),
+                    Abstraction(
+                        Var('u'),
+                        Var('x'))),
+                Abstraction(
+                    Var('u'),
+                    Var('u'))))))
+
+SUB = Abstraction(
+    Var('m'),
+    Abstraction(
+        Var('n'),
+        Application(
+            Application(
+                Var('n'),
+                PRED),
+            Var('m'))))
+
+# ISZERO = λn.n (λf.FALSE) TRUE
+ISZERO = Abstraction(
+    Var('n'),
+    Application(
+        Application(
+            Var('n'),
+            Abstraction(
+                Var('x'),
+                FALSE)),
+        TRUE))
+
+
+base_case = Application(SUCC, ZERO)
+rec_case = Application(
+    Application(
+        MUL,
+        Var('n')),
+    Application(
+        Application(
+            Var('f'),
+            Var('f')),
+        Application(
+            PRED,
+            Var('n'))))
+
+test = Application(
+    Application(
+        Application(
+            ISZERO,
+            Var('n')),
+        base_case),
+    rec_case)
+
+lambdan = Abstraction(Var('n'), test)
+lambdaf = Abstraction(Var('f'), lambdan)
+FACT = Application(lambdaf, lambdaf)
