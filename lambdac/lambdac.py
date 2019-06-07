@@ -11,6 +11,12 @@ class LambdaExpr:
     def is_closed(self):
         return not self.fv()
 
+    def replace(self, delta):
+        return self
+
+    def fv(self):
+        return set()
+
 
 class Var(LambdaExpr):
 
@@ -79,32 +85,13 @@ class Application(LambdaExpr):
         return self.operator == other.operator and self.operand == other.operand
 
     def __str__(self):
-        types = type(self.operator), type(self.operand)
-        if types == (Abstraction, Abstraction):
-            template = '({})({})'
-        elif types == (Abstraction, Application):
-            template = '({})({})'
-        elif types == (Abstraction, Var):
-            template = '({}){}'
-        elif types == (Application, Abstraction):
-            template = '({})({})'
-        elif types == (Application, Application):
-            template = '({})({})'
-        elif types == (Application, Var):
-            template = '({}){}'
-        elif types == (Var, Var):
-            template = '{}{}'
-        elif types == (Var, Abstraction):
-            template = '{}({})'
-        elif types == (Var, Application):
-            template = '{}({})'
-
+        template = '({})({})'
         return template.format(self.operator, self.operand)
 
     def __repr__(self):
         return '{}({}, {})'.format(self.__class__.__name__,
-                                   repr(self.operand),
-                                   repr(self.operator))
+                                   repr(self.operator),
+                                   repr(self.operand))
 
     def replace(self, delta):
         return Application(self.operator.replace(delta), self.operand.replace(delta))
@@ -162,17 +149,19 @@ def get_path_to_outermost_leftmost_redex(expr, path=''):
         return None
     if type(expr) == Abstraction:
         return get_path_to_outermost_leftmost_redex(expr.reach, path + '.reach')
-    if expr.is_redex():
-        return path
-    left = get_path_to_outermost_leftmost_redex(expr.operator, path + '.operator')
-    right = get_path_to_outermost_leftmost_redex(expr.operand, path + '.operand')
-    if left is not None and right is not None:
-        if len(left.split('.')) >= len(right.split('.')):
+    if type(expr) == Application:
+        if expr.is_redex():
+            return path
+        left = get_path_to_outermost_leftmost_redex(expr.operator, path + '.operator')
+        right = get_path_to_outermost_leftmost_redex(expr.operand, path + '.operand')
+        if left is not None and right is not None:
+            if len(left.split('.')) >= len(right.split('.')):
+                return left
+            return right
+        elif left is not None:
             return left
         return right
-    elif left is not None:
-        return left
-    return right
+    assert False
 
 
 def lambda_reduce(expr, verbose=False):
@@ -244,6 +233,7 @@ def normal_evaluation(expr, verbose=False):
 
 def eager_evaluation(expr, verbose=False):
     """Perform eager evaluation on expr."""
+    from extensions import If, NatConst, BoolConst, BinOP, OP, Tuple, TupleAt, Letrec
 
     if not expr.is_closed():
         raise ValueError('Only closed expresions may be evaluated')
@@ -253,23 +243,62 @@ def eager_evaluation(expr, verbose=False):
 
         def maybe_print(msg):
             if verbose:
-                print('{} {}'.format('.'.join(branch_id), msg))
+                if branch_id:
+                    print('{} {}'.format('.'.join(branch_id), msg))
+                else:
+                    print(msg)
 
-        # abstractions are the cannonical form
+        maybe_print(expr)
         if type(expr) == Abstraction:
-            maybe_print('{} ⇒ {}'.format(expr, expr))
             result = expr
-        else:
-            # expr is Application
-            maybe_print(expr)
-
+        elif type(expr) == Application:
             e1 = inner(expr.operator, branch_id + ['a'])
             z1 = inner(expr.operand, branch_id + ['b'])
             z = e1.reach.replace(Delta({e1.bind: z1}))
-
             result = inner(z, branch_id + ['c'])
-            maybe_print('⇒ {}'.format(result))
+        elif type(expr) == If:
+            guard = inner(expr.b, branch_id + ['a'])
+            assert isinstance(guard, BoolConst)
+            if guard.value():
+                result = inner(expr.e1, branch_id + ['b'])
+            else:
+                result = inner(expr.e2, branch_id + ['b'])
+        elif type(expr) in (NatConst, BoolConst):
+            result = expr
+        elif issubclass(expr.__class__, BinOP):
+            a = inner(expr.a, branch_id + ['a'])
+            b = inner(expr.b, branch_id + ['b'])
+            value = getattr(expr.__class__, 'OPERATOR')(a.value(), b.value())
+            if type(value) == int:
+                result = NatConst(value)
+            else:
+                result = BoolConst(value)
+        elif issubclass(expr.__class__, OP):
+            a = inner(expr.a, branch_id + ['a'])
+            value = getattr(expr.__class__, 'OPERATOR')(a.value())
+            if type(value) == int:
+                result = NatConst(value)
+            else:
+                result = BoolConst(value)
+        elif type(expr) == Tuple:
+            index = 'a'
+            canonic_forms = []
+            for index, elem in enumerate(expr.elems, ord('a')):
+                canonic_forms.append(inner(elem, branch_id + [chr(index)]))
+            result = Tuple(*canonic_forms)
+        elif type(expr) == TupleAt:
+            result = inner(expr.t, branch_id + ['a']).elems[expr.k - 1]
+        elif type(expr) == Letrec:
+            abstraction = Abstraction(
+                expr.e1.bind,
+                Letrec(expr.v, expr.e1, expr.e1.reach))
+            delta = Delta({expr.v: abstraction})
+            new_expr = expr.e2.replace(delta)
+            result = inner(new_expr, branch_id + ['a'])
+        else:
+            assert False, repr(expr)
 
+        maybe_print('⇒ {}'.format(result))
         return result
 
     try:

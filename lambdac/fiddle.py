@@ -1,5 +1,6 @@
 from lambdac import *
 from replace import *
+from extensions import *
 
 # TRUE = λx.λy.x
 TRUE = Abstraction(
