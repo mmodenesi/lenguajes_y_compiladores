@@ -2,8 +2,9 @@ from lambdac import *
 from extensions import *
 
 
-e = BoolConst(False)
+e = BoolConst(True)
 
+# letrec f ≡ λx.if e then 1 else f x in f 0
 exp = Letrec(
     Var('f'),
     Abstraction(
