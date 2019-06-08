@@ -138,7 +138,7 @@ class Application(LambdaExpr):
             return z.eval(strategy, verbose, branch_id + ['c'])
         else:
             e = self.operator.eval(strategy, verbose, branch_id + ['a'])
-            z = e.reach.replace(Delta({e.bind: expr.operand}))
+            z = e.reach.replace(Delta({e.bind: self.operand}))
             return z.eval(strategy, verbose, branch_id + ['b'])
 
 

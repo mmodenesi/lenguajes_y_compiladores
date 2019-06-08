@@ -215,7 +215,7 @@ class Tuple(LambdaExpr):
         if strategy == 'eager':
             canonic_forms = []
             for index, elem in enumerate(self.elems, ord('a')):
-                canonic_forms.append(elem.eager_eval(verbose, branch_id + [chr(index)]))
+                canonic_forms.append(elem.eval(strategy, verbose, branch_id + [chr(index)]))
             return Tuple(*canonic_forms)
         else:
             return self
@@ -281,9 +281,28 @@ class Letrec(LambdaExpr):
 
     def _eval(self, strategy, verbose, branch_id):
         if strategy == 'eager':
-            abstraction = Abstraction(
-                self.e1.bind,
-                Letrec(self.v, self.e1, self.e1.reach))
+            abstraction = Abstraction(self.e1.bind, Letrec(self.v, self.e1, self.e1.reach))
             delta = Delta({self.v: abstraction})
-            new_expr = self.e2.replace(delta)
-            return new_expr.eager_eval(verbose, branch_id + ['a'])
+        else:
+            abstraction = Abstraction(self.v, self.e1)
+            rec = Rec(abstraction)
+            delta = Delta({self.v: rec})
+        new_expr = self.e2.replace(delta)
+        return new_expr.eval(strategy, verbose, branch_id + ['a'])
+
+
+class Rec(LambdaExpr):
+    def __init__(self, f):
+        assert isinstance(f, Abstraction)
+        self.f = f
+
+    def __str__(self):
+        return 'rec({})'.format(self.f)
+
+    def __repr__(self):
+        return 'Rec({})'.format(repr(self.f))
+
+    def _eval(self, strategy, verbose, branch_id):
+        if strategy == 'eager':
+            raise ValueError('Rec only accepts normal evaluation')
+        return Application(self.f, Rec(self.f)).eval(strategy, verbose, branch_id + ['a'])
