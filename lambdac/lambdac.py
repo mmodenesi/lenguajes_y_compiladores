@@ -239,31 +239,3 @@ def lambda_reduce(expr, verbose=False):
         return inner(expr)
     except RecursionError as e:
         print(e)
-
-
-def normal_evaluation(expr, verbose=False):
-    """Perform normal evaluation on expr."""
-
-    def inner(expr, branch_id=None):
-        branch_id = branch_id or []
-
-        # abstractions are the cannonical form
-        if type(expr) == Abstraction:
-            maybe_print('{} ⇒ {}'.format(expr, expr))
-            result = expr
-        else:
-            # expr is Application
-            maybe_print(expr)
-
-            e = inner(expr.operator, branch_id + ['a'])
-            z = e.reach.replace(Delta({e.bind: expr.operand}))
-
-            result = inner(z, branch_id + ['b'])
-            maybe_print('⇒ {}'.format(result))
-
-        return result
-
-    try:
-        return inner(expr)
-    except RecursionError as e:
-        print(e)
