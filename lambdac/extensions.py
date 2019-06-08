@@ -1,4 +1,4 @@
-from lambdac import LambdaExpr
+from lambdac import *
 from replace import Delta
 
 
@@ -17,6 +17,14 @@ class BinOP:
     def replace(self, delta):
         return self.__class__(self.a.replace(delta), self.b.replace(delta))
 
+    def _eager_eval(self, verbose, branch_id):
+        a = self.a.eager_eval(verbose, branch_id + ['a'])
+        b = self.b.eager_eval(verbose, branch_id + ['b'])
+        value = getattr(expr.__class__, 'OPERATOR')(a.value(), b.value())
+        if type(value) == int:
+            return NatConst(value)
+        return BoolConst(value)
+
 
 class OP:
     def __init__(self, a):
@@ -31,6 +39,13 @@ class OP:
     def replace(self, delta):
         return self.__class__(self.a.replace)
 
+    def _eager_eval(self, verbose, branch_id):
+        a = self.a.eager_eval(verbose, branch_id + ['a'])
+        value = getattr(expr.__class__, 'OPERATOR')(a.value())
+        if type(value) == int:
+            return NatConst(value)
+        return BoolConst(value)
+
 
 class NatConst(LambdaExpr):
     def __init__(self, n):
@@ -44,6 +59,9 @@ class NatConst(LambdaExpr):
 
     def value(self):
         return self.n
+
+    def _eager_eval(self, verbose, branch_id):
+        return self
 
 
 class BoolConst(NatConst):
@@ -133,6 +151,13 @@ class If(LambdaExpr):
     def __str__(self):
         return 'if {} then {} else {}'.format(self.b, self.e1, self.e2)
 
+    def _eager_eval(self, verbose, branch_id):
+        guard = self.b.eager_eval(verbose, branch_id + ['a'])
+        assert isinstance(guard, BoolConst)
+        if guard.value():
+            return self.e1.eager_eval(verbose, branch_id + ['b'])
+        return self.e2.eager_eval(verbose, branch_id + ['b'])
+
     def fv(self):
         return self.b.fv() | self.e1.fv() | self.e2.fv()
 
@@ -151,6 +176,12 @@ class Tuple(LambdaExpr):
 
     def __str__(self):
         return '〈{}〉'.format(', '.join((str(e) for e in self.elems)))
+
+    def _eager_eval(self, verbose, branch_id):
+        canonic_forms = []
+        for index, elem in enumerate(self.elems, ord('a')):
+            canonic_forms.append(elem.eager_eval(verbose, branch_id + [chr(index)]))
+        return Tuple(*canonic_forms)
 
     def fv(self):
         result = set()
@@ -173,6 +204,9 @@ class TupleAt(LambdaExpr):
 
     def __str__(self):
         return '{}.{}'.format(self.t, self.k)
+
+    def _eager_eval(self, verbose, branch_id):
+        return self.t.eager_eval(verbose, branch_id + ['a']).elems[self.k - 1]
 
     def fv(self):
         return self.t.fv()
@@ -204,3 +238,11 @@ class Letrec(LambdaExpr):
         newdelta[self.v] = vnew
 
         return Letrec(vnew, self.e1.replace(newdelta), self.e2.replace(newdelta))
+
+    def _eager_eval(self, verbose, branch_id):
+        abstraction = Abstraction(
+            self.e1.bind,
+            Letrec(self.v, self.e1, self.e1.reach))
+        delta = Delta({self.v: abstraction})
+        new_expr = self.e2.replace(delta)
+        return new_expr.eager_eval(verbose, branch_id + ['a'])

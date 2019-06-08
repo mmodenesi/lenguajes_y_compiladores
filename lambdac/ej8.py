@@ -19,4 +19,4 @@ exp = Letrec(
         Var('f'),
         NatConst(0)))
 
-eager_evaluation(exp, verbose=True)
+exp.eager_eval(verbose=True)

@@ -17,6 +17,29 @@ class LambdaExpr:
     def fv(self):
         return set()
 
+    def eager_eval(self, verbose=False, branch_id=None):
+        if not self.is_closed():
+            raise ValueError('{} is not a closed expresions'.format(self))
+
+        branch_id = branch_id or []
+        self._maybe_print(str(self), verbose, branch_id)
+
+        try:
+            result = self._eager_eval(verbose, branch_id)
+        except RecursionError as e:
+            print(e)
+            result = None
+        else:
+            self._maybe_print('⇒ {}'.format(result), verbose, branch_id)
+        return result
+
+    def _maybe_print(self, msg, verbose, branch_id):
+        if verbose:
+            if branch_id:
+                print('{} {}'.format('.'.join(branch_id), msg))
+            else:
+                print(msg)
+
 
 class Var(LambdaExpr):
 
@@ -99,6 +122,12 @@ class Application(LambdaExpr):
     def fv(self):
         return self.operator.fv() | self.operand.fv()
 
+    def _eager_eval(self, verbose, branch_id):
+        e1 = self.operator.eager_eval(verbose, branch_id + ['a'])
+        z1 = self.operand.eager_eval(verbose, branch_id + ['b'])
+        z = e1.reach.replace(Delta({e1.bind: z1}))
+        return z.eager_eval(verbose, branch_id + ['c'])
+
 
 class Abstraction(LambdaExpr):
     def __init__(self, bind, reach):
@@ -142,6 +171,9 @@ class Abstraction(LambdaExpr):
 
     def is_normal_form(self):
         return self.reach.is_normal_form()
+
+    def _eager_eval(self, verbose, branch_id):
+        return self
 
 
 def get_path_to_outermost_leftmost_redex(expr, path=''):
@@ -223,82 +255,6 @@ def normal_evaluation(expr, verbose=False):
             result = inner(z, branch_id + ['b'])
             maybe_print('⇒ {}'.format(result))
 
-        return result
-
-    try:
-        return inner(expr)
-    except RecursionError as e:
-        print(e)
-
-
-def eager_evaluation(expr, verbose=False):
-    """Perform eager evaluation on expr."""
-    from extensions import If, NatConst, BoolConst, BinOP, OP, Tuple, TupleAt, Letrec
-
-    if not expr.is_closed():
-        raise ValueError('Only closed expresions may be evaluated')
-
-    def inner(expr, branch_id=None):
-        branch_id = branch_id or []
-
-        def maybe_print(msg):
-            if verbose:
-                if branch_id:
-                    print('{} {}'.format('.'.join(branch_id), msg))
-                else:
-                    print(msg)
-
-        maybe_print(expr)
-        if type(expr) == Abstraction:
-            result = expr
-        elif type(expr) == Application:
-            e1 = inner(expr.operator, branch_id + ['a'])
-            z1 = inner(expr.operand, branch_id + ['b'])
-            z = e1.reach.replace(Delta({e1.bind: z1}))
-            result = inner(z, branch_id + ['c'])
-        elif type(expr) == If:
-            guard = inner(expr.b, branch_id + ['a'])
-            assert isinstance(guard, BoolConst)
-            if guard.value():
-                result = inner(expr.e1, branch_id + ['b'])
-            else:
-                result = inner(expr.e2, branch_id + ['b'])
-        elif type(expr) in (NatConst, BoolConst):
-            result = expr
-        elif issubclass(expr.__class__, BinOP):
-            a = inner(expr.a, branch_id + ['a'])
-            b = inner(expr.b, branch_id + ['b'])
-            value = getattr(expr.__class__, 'OPERATOR')(a.value(), b.value())
-            if type(value) == int:
-                result = NatConst(value)
-            else:
-                result = BoolConst(value)
-        elif issubclass(expr.__class__, OP):
-            a = inner(expr.a, branch_id + ['a'])
-            value = getattr(expr.__class__, 'OPERATOR')(a.value())
-            if type(value) == int:
-                result = NatConst(value)
-            else:
-                result = BoolConst(value)
-        elif type(expr) == Tuple:
-            index = 'a'
-            canonic_forms = []
-            for index, elem in enumerate(expr.elems, ord('a')):
-                canonic_forms.append(inner(elem, branch_id + [chr(index)]))
-            result = Tuple(*canonic_forms)
-        elif type(expr) == TupleAt:
-            result = inner(expr.t, branch_id + ['a']).elems[expr.k - 1]
-        elif type(expr) == Letrec:
-            abstraction = Abstraction(
-                expr.e1.bind,
-                Letrec(expr.v, expr.e1, expr.e1.reach))
-            delta = Delta({expr.v: abstraction})
-            new_expr = expr.e2.replace(delta)
-            result = inner(new_expr, branch_id + ['a'])
-        else:
-            assert False, repr(expr)
-
-        maybe_print('⇒ {}'.format(result))
         return result
 
     try:
