@@ -27,25 +27,31 @@ class BinOP:
             b = self.b.eval(strategy, verbose, branch_id + ['b'])
             value = self._operate(a.value(), b.value())
         else:
-            is_or = isinstance(self, Or)
-            is_and = isinstance(self, And)
-            is_implies = isinstance(self, Implies)
-            if is_or or is_and or is_implies:
-                a = self.a.eval(strategy, verbose, branch_id + ['a'])
-                a_val = a.value()
-                assert isinstance(a, BoolConst)
-                if (a_val and is_and) or (not a_val and is_or):
-                    value = self.b.eval(strategy, verbose, branch_id + ['b'])
-                elif (not a_val and is_implies):
+            a = self.a.eval(strategy, verbose, branch_id + ['a'])
+            a_val = a.value()
+
+            if isinstance(self, Or):
+                if a_val:
                     value = True
                 else:
-                    value = a_val
-            else:
-                a = self.a.eval(strategy, verbose, branch_id + ['a'])
-                b = self.b.eval(strategy, verbose, branch_id + ['b'])
-                value = self._operate(a.value(), b.value())
+                    value = self.b.eval(strategy, verbose, branch_id + ['b'])
 
-            if isinstance(a_val, int):
+            elif isinstance(self, And):
+                if not a_val:
+                    value = False
+                else:
+                    value = self.b.eval(strategy, verbose, branch_id + ['b'])
+
+            elif isinstance(self, Implies):
+                if a_val:
+                    value = self.b.eval(strategy, verbose, branch_id + ['b'])
+                else:
+                    value = True
+            else:
+                b = self.b.eval(strategy, verbose, branch_id + ['b'])
+                value = self._operate(a_val, b.value())
+
+            if isinstance(value, int):
                 return NatConst(value)
             return BoolConst(value)
 
