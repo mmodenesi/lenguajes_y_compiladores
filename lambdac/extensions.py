@@ -244,9 +244,13 @@ class TupleAt(LambdaExpr):
 
     def _eval(self, strategy, verbose, branch_id):
         if strategy == 'eager':
-            return self.t.eval(strategy, verbose, branch_id + ['a']).elems[self.k - 1]
+            cf = self.t.eval(strategy, verbose, branch_id + ['a'])
+            assert isinstance(cf, Tuple)
+            return cf.elems[self.k.value() - 1]
         else:
-            return self.t[self.k - 1].eval(strategy, verbose, branch_id + ['a'])
+            cf = self.t.eval(strategy, verbose, branch_id + ['a'])
+            assert isinstance(cf, Tuple)
+            return cf.elems[self.k.value() - 1].eval(strategy, verbose, branch_id + ['a'])
 
     def fv(self):
         return self.t.fv()
