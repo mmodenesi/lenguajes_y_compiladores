@@ -17,15 +17,24 @@ class LambdaExpr:
     def fv(self):
         return set()
 
-    def eager_eval(self, verbose=False, branch_id=None):
+    def _maybe_print(self, msg, verbose, branch_id):
+        if verbose:
+            if branch_id:
+                print('{} {}'.format('.'.join(branch_id), msg))
+            else:
+                print(msg)
+
+    def eval(self, strategy, verbose, branch_id):
         if not self.is_closed():
             raise ValueError('{} is not a closed expresions'.format(self))
+        if strategy not in ('eager', 'normal'):
+            raise ValueError('"{}" is not an evaluation strategy'.format(strategy))
 
         branch_id = branch_id or []
         self._maybe_print(str(self), verbose, branch_id)
 
         try:
-            result = self._eager_eval(verbose, branch_id)
+            result = self._eval(strategy, verbose, branch_id)
         except RecursionError as e:
             print(e)
             result = None
@@ -33,12 +42,11 @@ class LambdaExpr:
             self._maybe_print('⇒ {}'.format(result), verbose, branch_id)
         return result
 
-    def _maybe_print(self, msg, verbose, branch_id):
-        if verbose:
-            if branch_id:
-                print('{} {}'.format('.'.join(branch_id), msg))
-            else:
-                print(msg)
+    def normal_eval(self, verbose=False, branch_id=None):
+        return self.eval('normal', verbose, branch_id)
+
+    def eager_eval(self, verbose=False, branch_id=None):
+        return self.eval('eager', verbose, branch_id)
 
 
 class Var(LambdaExpr):
@@ -122,11 +130,16 @@ class Application(LambdaExpr):
     def fv(self):
         return self.operator.fv() | self.operand.fv()
 
-    def _eager_eval(self, verbose, branch_id):
-        e1 = self.operator.eager_eval(verbose, branch_id + ['a'])
-        z1 = self.operand.eager_eval(verbose, branch_id + ['b'])
-        z = e1.reach.replace(Delta({e1.bind: z1}))
-        return z.eager_eval(verbose, branch_id + ['c'])
+    def _eval(self, strategy, verbose, branch_id):
+        if strategy == 'eager':
+            e1 = self.operator.eval(strategy, verbose, branch_id + ['a'])
+            z1 = self.operand.eval(strategy, verbose, branch_id + ['b'])
+            z = e1.reach.replace(Delta({e1.bind: z1}))
+            return z.eval(strategy, verbose, branch_id + ['c'])
+        else:
+            e = self.operator.eval(strategy, verbose, branch_id + ['a'])
+            z = e.reach.replace(Delta({e.bind: expr.operand}))
+            return z.eval(strategy, verbose, branch_id + ['b'])
 
 
 class Abstraction(LambdaExpr):
@@ -143,6 +156,14 @@ class Abstraction(LambdaExpr):
         return '{}({}, {})'.format(self.__class__.__name__,
                                    repr(self.bind),
                                    repr(self.reach))
+
+    def __eq__(self, other):
+        if self.__class__ != other.__class__:
+            return False
+        return self.reach == other.reach.replace(Delta({other.bind: self.bind}))
+
+    def _eval(self, strategy, verbose, branch_id):
+        return self
 
     def rename(self, newbind):
         if newbind in (self.reach.fv() - {self.bind}):
@@ -164,16 +185,8 @@ class Abstraction(LambdaExpr):
 
         return Abstraction(vnew, self.reach.replace(newdelta))
 
-    def __eq__(self, other):
-        if self.__class__ != other.__class__:
-            return False
-        return self.reach == other.reach.replace(Delta({other.bind: self.bind}))
-
     def is_normal_form(self):
         return self.reach.is_normal_form()
-
-    def _eager_eval(self, verbose, branch_id):
-        return self
 
 
 def get_path_to_outermost_leftmost_redex(expr, path=''):
@@ -231,15 +244,8 @@ def lambda_reduce(expr, verbose=False):
 def normal_evaluation(expr, verbose=False):
     """Perform normal evaluation on expr."""
 
-    if not expr.is_closed():
-        raise ValueError('Only closed expresions may be evaluated')
-
     def inner(expr, branch_id=None):
         branch_id = branch_id or []
-
-        def maybe_print(msg):
-            if verbose:
-                print('{} {}'.format('.'.join(branch_id), msg))
 
         # abstractions are the cannonical form
         if type(expr) == Abstraction:

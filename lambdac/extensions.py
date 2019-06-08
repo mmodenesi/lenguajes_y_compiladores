@@ -11,19 +11,43 @@ class BinOP:
     def __str__(self):
         return '({} {} {})'.format(self.a, self.OP_STR, self.b)
 
+    @classmethod
+    def _operate(cls, a, b):
+        return cls.OPERATOR(a, b)
+
     def fv(self):
         return self.a.fv() | self.b.fv()
 
     def replace(self, delta):
         return self.__class__(self.a.replace(delta), self.b.replace(delta))
 
-    def _eager_eval(self, verbose, branch_id):
-        a = self.a.eager_eval(verbose, branch_id + ['a'])
-        b = self.b.eager_eval(verbose, branch_id + ['b'])
-        value = getattr(expr.__class__, 'OPERATOR')(a.value(), b.value())
-        if type(value) == int:
-            return NatConst(value)
-        return BoolConst(value)
+    def _eval(self, strategy, verbose, branch_id):
+        if strategy == 'eager':
+            a = self.a.eval(strategy, verbose, branch_id + ['a'])
+            b = self.b.eval(strategy, verbose, branch_id + ['b'])
+            value = self._operate(a.value(), b.value())
+        else:
+            is_or = isinstance(self, Or)
+            is_and = isinstance(self, And)
+            is_implies = isinstance(self, Implies)
+            if is_or or is_and or is_implies:
+                a = self.a.eval(strategy, verbose, branch_id + ['a'])
+                a_val = a.value()
+                assert isinstance(a, BoolConst)
+                if (a_val and is_and) or (not a_val and is_or):
+                    value = self.b.eval(strategy, verbose, branch_id + ['b'])
+                elif (not a_val and is_implies):
+                    value = True
+                else:
+                    value = a_val
+            else:
+                a = self.a.eval(strategy, verbose, branch_id + ['a'])
+                b = self.b.eval(strategy, verbose, branch_id + ['b'])
+                value = self._operate(a.value(), b.value())
+
+            if isinstance(a_val, int):
+                return NatConst(value)
+            return BoolConst(value)
 
 
 class OP:
@@ -33,15 +57,19 @@ class OP:
     def __str__(self):
         return '({} {})'.format(self.OP_STR, self.a)
 
+    @classmethod
+    def _operate(cls, value):
+        return cls.OPERATOR(vale)
+
     def fv(self):
         return self.a.fv()
 
     def replace(self, delta):
         return self.__class__(self.a.replace)
 
-    def _eager_eval(self, verbose, branch_id):
-        a = self.a.eager_eval(verbose, branch_id + ['a'])
-        value = getattr(expr.__class__, 'OPERATOR')(a.value())
+    def _eval(self, strategy, verbose, branch_id):
+        a = self.a.eval(strategy, verbose, branch_id + ['a'])
+        value = self._operate(a.value())
         if type(value) == int:
             return NatConst(value)
         return BoolConst(value)
@@ -60,7 +88,7 @@ class NatConst(LambdaExpr):
     def value(self):
         return self.n
 
-    def _eager_eval(self, verbose, branch_id):
+    def _eval(self, strategy, verbose, branch_id):
         return self
 
 
@@ -151,12 +179,12 @@ class If(LambdaExpr):
     def __str__(self):
         return 'if {} then {} else {}'.format(self.b, self.e1, self.e2)
 
-    def _eager_eval(self, verbose, branch_id):
-        guard = self.b.eager_eval(verbose, branch_id + ['a'])
+    def _eval(self, strategy, verbose, branch_id):
+        guard = self.b.eval(strategy, verbose, branch_id + ['a'])
         assert isinstance(guard, BoolConst)
         if guard.value():
-            return self.e1.eager_eval(verbose, branch_id + ['b'])
-        return self.e2.eager_eval(verbose, branch_id + ['b'])
+            return self.e1.eval(strategy, verbose, branch_id + ['b'])
+        return self.e2.eval(strategy, verbose, branch_id + ['b'])
 
     def fv(self):
         return self.b.fv() | self.e1.fv() | self.e2.fv()
@@ -177,11 +205,14 @@ class Tuple(LambdaExpr):
     def __str__(self):
         return '〈{}〉'.format(', '.join((str(e) for e in self.elems)))
 
-    def _eager_eval(self, verbose, branch_id):
-        canonic_forms = []
-        for index, elem in enumerate(self.elems, ord('a')):
-            canonic_forms.append(elem.eager_eval(verbose, branch_id + [chr(index)]))
-        return Tuple(*canonic_forms)
+    def _eval(self, strategy, verbose, branch_id):
+        if strategy == 'eager':
+            canonic_forms = []
+            for index, elem in enumerate(self.elems, ord('a')):
+                canonic_forms.append(elem.eager_eval(verbose, branch_id + [chr(index)]))
+            return Tuple(*canonic_forms)
+        else:
+            return self
 
     def fv(self):
         result = set()
@@ -205,8 +236,11 @@ class TupleAt(LambdaExpr):
     def __str__(self):
         return '{}.{}'.format(self.t, self.k)
 
-    def _eager_eval(self, verbose, branch_id):
-        return self.t.eager_eval(verbose, branch_id + ['a']).elems[self.k - 1]
+    def _eval(self, strategy, verbose, branch_id):
+        if strategy == 'eager':
+            return self.t.eval(strategy, verbose, branch_id + ['a']).elems[self.k - 1]
+        else:
+            return self.t[self.k - 1].eval(strategy, verbose, branch_id + ['a'])
 
     def fv(self):
         return self.t.fv()
@@ -239,10 +273,11 @@ class Letrec(LambdaExpr):
 
         return Letrec(vnew, self.e1.replace(newdelta), self.e2.replace(newdelta))
 
-    def _eager_eval(self, verbose, branch_id):
-        abstraction = Abstraction(
-            self.e1.bind,
-            Letrec(self.v, self.e1, self.e1.reach))
-        delta = Delta({self.v: abstraction})
-        new_expr = self.e2.replace(delta)
-        return new_expr.eager_eval(verbose, branch_id + ['a'])
+    def _eval(self, strategy, verbose, branch_id):
+        if strategy == 'eager':
+            abstraction = Abstraction(
+                self.e1.bind,
+                Letrec(self.v, self.e1, self.e1.reach))
+            delta = Delta({self.v: abstraction})
+            new_expr = self.e2.replace(delta)
+            return new_expr.eager_eval(verbose, branch_id + ['a'])
