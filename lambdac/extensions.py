@@ -13,6 +13,12 @@ class BinOP:
 
     @classmethod
     def _operate(cls, a, b):
+        if issubclass(cls, BoolConst):
+            t = type(True)
+        else:
+            t = type(1)
+        if (type(a), type(b)) != (t, t):
+            raise TypeError('Error computing {} {} {}'.format(a, cls.OP_STR, b))
         return cls.OPERATOR(a, b)
 
     def fv(self):
@@ -51,9 +57,9 @@ class BinOP:
                 b = self.b.eval(strategy, verbose, branch_id + ['b'])
                 value = self._operate(a_val, b.value())
 
-            if isinstance(value, int):
-                return NatConst(value)
+        if isinstance(value, bool):
             return BoolConst(value)
+        return NatConst(value)
 
 
 class OP:
@@ -65,7 +71,13 @@ class OP:
 
     @classmethod
     def _operate(cls, value):
-        return cls.OPERATOR(vale)
+        if issubclass(cls, BoolConst):
+            t = type(True)
+        else:
+            t = type(1)
+        if type(value) != t:
+            raise TypeError('Error computing {} {}'.format(cls.OP_STR, value))
+        return cls.OPERATOR(value)
 
     def fv(self):
         return self.a.fv()
