@@ -1,13 +1,13 @@
 from lambdac import *
 from extensions import *
 
+f = Var('f')
+first = BoolConst(True)
+fun = Abstraction(f, Tuple(first, Application(f, f)))
 
-inner = Application(
-            Abstraction(Var('f'), Tuple(NatConst(1), Application(Var('f'), Var('f')))),
-            Abstraction(Var('f'), Tuple(NatConst(1), Application(Var('f'), Var('f')))),
-        )
+second = Application(fun, fun)
 
-expr = TupleAt(Tuple(NatConst(1), inner), NatConst(1))
+expr = TupleAt(Tuple(first, second), NatConst(1))
 
 i = 0
 while i < 10:
@@ -16,4 +16,3 @@ while i < 10:
     expr.k = NatConst(2)
     expr = TupleAt(expr, NatConst(1))
     i += 1
-
