@@ -33,13 +33,9 @@ class LambdaExpr:
         branch_id = branch_id or []
         self._maybe_print(str(self), verbose, branch_id)
 
-        try:
-            result = self._eval(strategy, verbose, branch_id)
-        except RecursionError as e:
-            print(e)
-            result = None
-        else:
-            self._maybe_print('⇒ {}'.format(result), verbose, branch_id)
+        diverges = False
+        result = self._eval(strategy, verbose, branch_id)
+        self._maybe_print('⇒ {}'.format(result), verbose, branch_id)
         return result
 
     def normal_eval(self, verbose=False, branch_id=None):
